@@ -46,7 +46,7 @@ INFO_REQURED = [INFO_PRODUCT, INFO_IMAGE_LINK, INFO_IMAGE_HASH, INFO_IMAGE_SESS,
 
 def run_query(url, headers, post=None, raw=False):
     if post is not None:
-        data = '\n'.join([entry + '=' + post[entry] for entry in post])
+        data = '\n'.join([f'{entry}={post[entry]}' for entry in post])
         if sys.version_info[0] >= 3:
             data = data.encode('utf-8')
     else:
@@ -54,9 +54,7 @@ def run_query(url, headers, post=None, raw=False):
     req = Request(url=url, headers=headers, data=data)
     try:
         response = urlopen(req)
-        if raw:
-            return response
-        return dict(response.info()), response.read()
+        return response if raw else (dict(response.info()), response.read())
     except HTTPError as e:
         print(f'ERROR: "{e}" when connecting to {url}')
         sys.exit(1)
@@ -64,11 +62,15 @@ def run_query(url, headers, post=None, raw=False):
 
 def generate_id(id_type, id_value=None):
     valid_chars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']
-    return ''.join(random.choice(valid_chars) for i in range(id_type)) if not id_value else id_value
+    return (
+        ''.join(random.choice(valid_chars) for _ in range(id_type))
+        if not id_value
+        else id_value
+    )
 
 
 def product_mlb(mlb):
-    return '00000000000' + mlb[11] + mlb[12] + mlb[13] + mlb[14] + '00'
+    return f'00000000000{mlb[11]}{mlb[12]}{mlb[13]}{mlb[14]}00'
 
 
 def mlb_from_eeee(eeee):
@@ -151,7 +153,7 @@ def get_session(args):
             for cookie in cookies:
                 return cookie if cookie.startswith('session=') else ...
 
-    raise RuntimeError('No session in headers ' + str(headers))
+    raise RuntimeError(f'No session in headers {str(headers)}')
 
 
 def get_image_info(session, bid, mlb=MLB_ZERO, diag=False, os_type='default', cid=None):
@@ -210,7 +212,7 @@ def save_image(url, sess, filename='', directory=''):
     if filename == '':
         filename = os.path.basename(purl.path)
     if filename.find('/') >= 0 or filename == '':
-        raise RuntimeError('Invalid save path ' + filename)
+        raise RuntimeError(f'Invalid save path {filename}')
 
     print(f'Saving {url} to {directory}/{filename}...')
 
@@ -234,9 +236,7 @@ def verify_image(dmgpath, cnkpath):
     print('Verifying image with chunklist...')
 
     with open(dmgpath, 'rb') as dmgf:
-        cnkcount = 0
-        for cnksize, cnkhash in verify_chunklist(cnkpath):
-            cnkcount += 1
+        for cnkcount, (cnksize, cnkhash) in enumerate(verify_chunklist(cnkpath), start=1):
             print(f'\rChunk {cnkcount} ({cnksize} bytes)', end='')
             sys.stdout.flush()
             cnk = dmgf.read(cnksize)
@@ -282,15 +282,15 @@ def action_download(args):
     if args.verbose:
         print(info)
     print(f'Downloading {info[INFO_PRODUCT]}...')
-    dmgname = '' if args.basename == '' else args.basename + '.dmg'
+    dmgname = '' if args.basename == '' else f'{args.basename}.dmg'
     dmgpath = save_image(info[INFO_IMAGE_LINK], info[INFO_IMAGE_SESS], dmgname, args.outdir)
-    cnkname = '' if args.basename == '' else args.basename + '.chunklist'
+    cnkname = '' if args.basename == '' else f'{args.basename}.chunklist'
     cnkpath = save_image(info[INFO_SIGN_LINK], info[INFO_SIGN_SESS], cnkname, args.outdir)
     try:
         verify_image(dmgpath, cnkpath)
         return 0
     except Exception as err:
-        if isinstance(err, AssertionError) and str(err) == '':
+        if isinstance(err, AssertionError) and not str(err):
             try:
                 tb = sys.exc_info()[2]
                 while tb.tb_next:
@@ -444,7 +444,7 @@ def action_guess(args):
         except Exception as e:
             print(f'WARN: Failed to check {model}, exception: {e}')
 
-    if len(supported) > 0:
+    if supported:
         print(f'SUCCESS: MLB {mlb} looks supported for:')
         for model in supported.items():
             print(f'- {model}, up to {supported[model][0]}, default: {supported[model][1]}, latest: {supported[model][2]}')
